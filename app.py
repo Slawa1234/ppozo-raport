@@ -5,7 +5,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Konfiguracja strony
 st.set_page_config(page_title="Generator Raportu PPOŻ", layout="wide")
 st.title("📸 Generator Zbiorczego Raportu PPOŻ")
 
@@ -53,7 +52,7 @@ if uploaded_files:
             doc = SimpleDocTemplate(buffer, pagesize=letter)
             story = []
             
-            # Styl z wymuszonym kodowaniem WinAnsiEncoding dla polskich znaków
+            # Styl z obsługą polskich znaków
             style = ParagraphStyle(
                 'Normal',
                 fontName='Helvetica',
@@ -65,22 +64,31 @@ if uploaded_files:
             for sys in st.session_state.lista_systemow:
                 story.append(Paragraph(f"System ID: {sys['id']}", ParagraphStyle('H2', fontName='Helvetica-Bold', fontSize=14)))
                 
-                # Zdjęcia
                 img1 = Image(BytesIO(sys['f_przed']), width=200, height=150)
                 img2 = Image(BytesIO(sys['f_po']), width=200, height=150)
                 
-                # Tabela z polskimi znakami (WinAnsiEncoding)
+                # Tabela z pełnymi opisami
                 data = [
                     [Paragraph("STAN PRZED", style), Paragraph("STAN PO", style)],
                     [img1, img2],
                     [Paragraph(f"Rozmiar: {sys['rozmiar']}", style), Paragraph(f"Materiały: {sys['mat']}", style)],
-                    [Paragraph("PL: Otwarty otwór instalacyjny.", style), Paragraph("PL: Gotowe zabezpieczenie ppoż. Szczelina wypełniona.", style)]
+                    [Paragraph("PL: Otwarty otwór instalacyjny przed uszczelnieniem.", style), 
+                     Paragraph("PL: Gotowe zabezpieczenie ppoż. Szczelina wypełniona materiałem ogniochronnym.", style)],
+                    [Paragraph("DE: Offene Installationsöffnung vor der Abschottung.", style), 
+                     Paragraph("DE: Fertige Brandschutzabdichtung. Der Spalt ist ordnungsgemäß versiegelt.", style)]
                 ]
+                
                 t = Table(data, colWidths=[250, 250])
-                t.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
+                t.setStyle(TableStyle([
+                    ('BOX', (0,0), (-1,-1), 1, colors.black),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.black)
+                ]))
                 story.append(t)
                 story.append(PageBreak())
             
             doc.build(story)
             buffer.seek(0)
             st.download_button("📥 POBIERZ PDF", buffer, "Raport.pdf", "application/pdf")
+
+
