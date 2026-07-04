@@ -8,7 +8,7 @@ from reportlab.lib import colors
 st.set_page_config(page_title="Generator Zbiorczego Raportu PPOŻ", layout="wide")
 
 st.title("📸 Generator Zbiorczego Raportu PPOŻ")
-st.subheader("Wersja z podglądem zdjęć na żywo i tworzeniem listy systemów")
+st.subheader("Wersja z podglądem zdjęć, rozmiarem przepustu i użytymi materiałami")
 
 # Inicjalizacja pamięci podręcznej dla dodanych systemów
 if 'lista_systemow' not in st.session_state:
@@ -36,9 +36,14 @@ if uploaded_files:
     st.write("---")
     st.write("### 2. Skonfiguruj kolejny system (Przejście)")
     
-    col_id, col_text = st.columns([1, 3])
+    # Okienka na dane techniczne systemu
+    col_id, col_size, col_mat = st.columns([1, 1, 2])
     with col_id:
         id_systemu = st.text_input("ID Systemu (np. 387)", "")
+    with col_size:
+        rozmiar_systemu = st.text_input("Rozmiar (np. 200x200 / Ø110)", "")
+    with col_mat:
+        materialy_systemu = st.text_input("Użyte materiały (np. Hilti CFS-S ACR / CP 611)", "")
     
     # Dwie kolumny na wybór i PODGLĄD zdjęć na żywo
     col_przed, col_po = st.columns(2)
@@ -47,14 +52,12 @@ if uploaded_files:
         st.write("**STAN PRZED (Vor Zustand)**")
         wybrane_przed = st.selectbox("Wybierz zdjęcie dla Stanu Przed", opcje_zdjec, key="sb_przed")
         if wybrane_przed != "-- Wybierz zdjęcie --":
-            # Wyświetlamy podgląd wybranego zdjęcia!
             st.image(mapa_plikow[wybrane_przed], caption=f"Podgląd: {wybrane_przed}", width=250)
             
     with col_po:
         st.write("**STAN PO (Nach Zustand)**")
         wybrane_po = st.selectbox("Wybierz zdjęcie dla Stanu Po", opcje_zdjec, key="sb_po")
         if wybrane_po != "-- Wybierz zdjęcie --":
-            # Wyświetlamy podgląd wybranego zdjęcia!
             st.image(mapa_plikow[wybrane_po], caption=f"Podgląd: {wybrane_po}", width=250)
 
     # Przycisk dodawania do listy
@@ -64,9 +67,11 @@ if uploaded_files:
         elif wybrane_przed == "-- Wybierz zdjęcie --" or wybrane_po == "-- Wybierz zdjęcie --":
             st.error("Musisz wybrać oba zdjęcia (Przed i Po) dla tego systemu!")
         else:
-            # Zapisujemy dane do pamięci sesji
+            # Zapisujemy dane do pamięci sesji wraz z nowymi polami
             nowy_system = {
                 "id": id_systemu,
+                "rozmiar": rozmiar_systemu if rozmiar_systemu else "-",
+                "materialy": materialy_systemu if materialy_systemu else "-",
                 "foto_przed_nazwa": wybrane_przed,
                 "foto_przed_bytes": mapa_plikow[wybrane_przed].getvalue(),
                 "foto_po_nazwa": wybrane_po,
@@ -80,9 +85,8 @@ if uploaded_files:
         st.write("---")
         st.write(f"### 📋 Aktualna lista systemów w raporcie ({len(st.session_state.lista_systemow)})")
         
-        # Pokazujemy uproszczoną tabelę, żeby użytkownik widział co już dodał
         for idx, sys in enumerate(st.session_state.lista_systemow):
-            st.text(f"{idx+1}. System ID: {sys['id']} | Foto Przed: {sys['foto_przed_nazwa']} | Foto Po: {sys['foto_po_nazwa']}")
+            st.text(f"{idx+1}. System ID: {sys['id']} | Rozmiar: {sys['rozmiar']} | Materiały: {sys['materialy']}")
             
         # Generowanie raportu zbiorczego
         st.write("---")
@@ -128,6 +132,7 @@ if uploaded_files:
                     [Paragraph("<b>STAN PRZED (Vor Zustand)</b>", meta_style), Paragraph("<b>STAN PO (Nach Zustand)</b>", meta_style)],
                     [img_przed, img_po],
                     [Paragraph(f"<b>Plik:</b> {sys['foto_przed_nazwa']}", italic_style), Paragraph(f"<b>Plik:</b> {sys['foto_po_nazwa']}", italic_style)],
+                    [Paragraph(f"<b>Rozmiar / Abmessung:</b> {sys['rozmiar']}", meta_style), Paragraph(f"<b>Materiały / Materialien:</b> {sys['materialy']}", meta_style)],
                     [Paragraph("<b>PL:</b> Otwarty otwór instalacyjny przed uszczelnieniem.", italic_style), 
                      Paragraph("<b>PL:</b> Gotowe zabezpieczenie ppoż. Szczelina wypełniona materiałem ogniochronnym.", italic_style)],
                     [Paragraph("<b>DE:</b> Offene Installationsöffnung vor der Abschottung.", italic_style), 
@@ -137,6 +142,7 @@ if uploaded_files:
                 t = Table(table_data, colWidths=[260, 260])
                 t.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (1,0), colors.HexColor('#f8f9fa')),
+                    ('BACKGROUND', (0,3), (1,3), colors.HexColor('#f1f5f9')), # Wyróżnienie tła dla rozmiaru i materiałów
                     ('ALIGN', (0,0), (-1,-1), 'CENTER'),
                     ('VALIGN', (0,0), (-1,-1), 'TOP'),
                     ('BOTTOMPADDING', (0,0), (-1,-1), 8),
@@ -162,5 +168,6 @@ if uploaded_files:
                 st.success("Raport gotowy! Kliknij przycisk powyżej, aby zapisać plik.")
 else:
     st.info("Wgraj zdjęcia, aby rozpocząć konfigurację raportu.")
+
 
 
