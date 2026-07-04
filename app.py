@@ -1,148 +1,166 @@
-
 import streamlit as st
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-import os
 
-# Konfiguracja strony
-st.set_page_config(page_title="Generator Fotodokumentacji PPOŻ", layout="wide")
+st.set_page_config(page_title="Generator Zbiorczego Raportu PPOŻ", layout="wide")
 
-st.title("Fotograficznej PPOŻ")
-st.subheader("Automatyczne tworzenie raportów Przed / Po z pobieraniem PDF")
+st.title("📸 Generator Zbiorczego Raportu PPOŻ")
+st.subheader("Wersja z podglądem zdjęć na żywo i tworzeniem listy systemów")
+
+# Inicjalizacja pamięci podręcznej dla dodanych systemów
+if 'lista_systemow' not in st.session_state:
+    st.session_state.lista_systemow = []
 
 # Panel boczny - Dane projektu
 st.sidebar.header("Dane Projektu")
 project_name = st.sidebar.text_input("Nazwa Projektu", "MTU-München")
-system_label = st.sidebar.text_input("Oznaczenie Systemu", "047-01 / 047-02")
+system_label = st.sidebar.text_input("Oznaczenie Ogólne", "047-01 / 047-02")
 author = st.sidebar.text_input("Wykonawca (Visum)", "RH")
 
+# Czyszczenie listy
+if st.sidebar.button("🗑️ Wyczyść całą listę i zacznij od nowa"):
+    st.session_state.lista_systemow = []
+    st.toast("Lista systemów została wyczyszczona!")
+
 st.write("### 1. Wgraj zdjęcia z budowy")
-uploaded_files = st.file_uploader("Wybierz zdjęcia (.jpg, .png)", type=["jpg", "png"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Wgraj wszystkie zdjęcia dla tego projektu (.jpg, .png)", type=["jpg", "png"], accept_multiple_files=True)
 
 if uploaded_files:
-    # Zapisanie wgranych plików w pamięci podręcznej podręcznej (słownik nazwa: plik)
-    file_dict = {f.name: f for f in uploaded_files}
-    file_names = list(file_dict.keys())
+    # Tworzymy słownik, żeby łatwo wyciągać plik po jego nazwie
+    mapa_plikow = {f.name: f for f in uploaded_files}
+    opcje_zdjec = ["-- Wybierz zdjęcie --"] + list(mapa_plikow.keys())
     
-    st.write("### 2. Skonfiguruj Przejście / System")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        system_id = st.text_input("ID Systemu (np. 387)", "387")
-    with col2:
-        before_img_name = st.selectbox("Zdjęcie: Stan Przed", ["Wybiersz plik..."] + file_names)
-    with col3:
-        after_img_name = st.selectbox("Zdjęcie: Stan Po", ["Wybierz plik..."] + file_names)
-        
     st.write("---")
+    st.write("### 2. Skonfiguruj kolejny system (Przejście)")
     
-    # Przykładowe szablony opisów (możesz edytować w aplikacji)
-    desc_pl_before = st.text_area("Opis PL - Stan Przed", "Otwarty otwór instalacyjny w przegrodzie suchej zabudowy.")
-    desc_de_before = st.text_area("Opis DE - Vor Zustand", "Offene Installationsöffnung in der Trockenbauwand.")
+    col_id, col_text = st.columns([1, 3])
+    with col_id:
+        id_systemu = st.text_input("ID Systemu (np. 387)", "")
     
-    desc_pl_after = st.text_area("Opis PL - Stan Po", "Gotowe zabezpieczenie ppoż. Szczelina wypełniona wełną mineralną.")
-    desc_de_after = st.text_area("Opis DE - Nach Zustand", "Fertige Brandschutzabdichtung. Der Spalt ist ausgefüllt.")
+    # Dwie kolumny na wybór i PODGLĄD zdjęć na żywo
+    col_przed, col_po = st.columns(2)
+    
+    with col_przed:
+        st.write("**STAN PRZED (Vor Zustand)**")
+        wybrane_przed = st.selectbox("Wybierz zdjęcie dla Stanu Przed", opcje_zdjec, key="sb_przed")
+        if wybrane_przed != "-- Wybierz zdjęcie --":
+            # Wyświetlamy podgląd wybranego zdjęcia!
+            st.image(mapa_plikow[wybrane_przed], caption=f"Podgląd: {wybrane_przed}", width=250)
+            
+    with col_po:
+        st.write("**STAN PO (Nach Zustand)**")
+        wybrane_po = st.selectbox("Wybierz zdjęcie dla Stanu Po", opcje_zdjec, key="sb_po")
+        if wybrane_po != "-- Wybierz zdjęcie --":
+            # Wyświetlamy podgląd wybranego zdjęcia!
+            st.image(mapa_plikow[wybrane_po], caption=f"Podgląd: {wybrane_po}", width=250)
 
-    # Funkcja generująca PDF ze zdjęciami
-    def generate_pdf():
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-        story = []
-        
-        styles = getSampleStyleSheet()
-        
-        # Style tekstu
-        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=22, textColor=colors.HexColor('#2c3e50'), spaceAfter=15)
-        meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#34495e'), spaceAfter=5)
-        h2_style = ParagraphStyle('H2Style', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#2980b9'), spaceBefore=15, spaceAfter=10)
-        bold_style = ParagraphStyle('BoldStyle', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
-        italic_style = ParagraphStyle('ItalicStyle', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Oblique', textColor=colors.HexColor('#2c3e50'))
-        
-        # Nagłówek dokumentu
-        story.append(Paragraph("RAPORT FOTODOKUMENTACJI PPOŻ", title_style))
-        story.append(Paragraph(f"<b>Projekt:</b> {project_name}", meta_style))
-        story.append(Paragraph(f"<b>Oznaczenie Systemu:</b> {system_label}", meta_style))
-        story.append(Paragraph(f"<b>Wykonawca:</b> {author}", meta_style))
-        story.append(Spacer(1, 15))
-        
-        story.append(Paragraph(f"System ID: {system_id}", h2_style))
-        story.append(Spacer(1, 10))
-        
-        # Przygotowanie danych do tabeli (Zdjęcia i opisy)
-        table_data = []
-        
-        # Wiersz 1: Nagłówki sekcji Przed / Po
-        table_data.append([Paragraph("<b>STAN PRZED (Vor Zustand)</b>", meta_style), Paragraph("<b>STAN PO (Nach Zustand)</b>", meta_style)])
-        
-        # Wiersz 2: Zdjęcia
-        img_before_flowable = Paragraph("[Brak zdjęcia]", italic_style)
-        img_after_flowable = Paragraph("[Brak zdjęcia]", italic_style)
-        
-        # Bezpieczne wczytywanie i skalowanie zdjęć do PDF
-        if before_img_name != "Wybierz plik...":
-            try:
-                img_before_data = BytesIO(file_dict[before_img_name].getvalue())
-                img_before_flowable = Image(img_before_data, width=240, height=180)
-            except:
-                pass
-                
-        if after_img_name != "Wybierz plik...":
-            try:
-                img_after_data = BytesIO(file_dict[after_img_name].getvalue())
-                img_after_flowable = Image(img_after_data, width=240, height=180)
-            except:
-                pass
-                
-        table_data.append([img_before_flowable, img_after_flowable])
-        
-        # Wiersz 3: Opisy PL
-        table_data.append([
-            Paragraph(f"<b>PL:</b> {desc_pl_before}", italic_style),
-            Paragraph(f"<b>PL:</b> {desc_pl_after}", italic_style)
-        ])
-        
-        # Wiersz 4: Opisy DE
-        table_data.append([
-            Paragraph(f"<b>DE:</b> {desc_de_before}", italic_style),
-            Paragraph(f"<b>DE:</b> {desc_de_after}", italic_style)
-        ])
-        
-        # Tworzenie i stylowanie tabeli dwukolumnowej
-        t = Table(table_data, colWidths=[260, 260])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (1,0), colors.HexColor('#f8f9fa')),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-            ('TOPPADDING', (0,0), (-1,-1), 10),
-            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#cbd5e1')),
-        ]))
-        
-        story.append(t)
-        
-        # Budowanie dokumentu
-        doc.build(story)
-        buffer.seek(0)
-        return buffer
+    # Przycisk dodawania do listy
+    if st.button("➕ Dodaj ten system do raportu zbiorczego"):
+        if not id_systemu:
+            st.error("Proszę wpisać ID Systemu!")
+        elif wybrane_przed == "-- Wybierz zdjęcie --" or wybrane_po == "-- Wybierz zdjęcie --":
+            st.error("Musisz wybrać oba zdjęcia (Przed i Po) dla tego systemu!")
+        else:
+            # Zapisujemy dane do pamięci sesji
+            nowy_system = {
+                "id": id_systemu,
+                "foto_przed_nazwa": wybrane_przed,
+                "foto_przed_bytes": mapa_plikow[wybrane_przed].getvalue(),
+                "foto_po_nazwa": wybrane_po,
+                "foto_po_bytes": mapa_plikow[wybrane_po].getvalue()
+            }
+            st.session_state.lista_systemow.append(nowy_system)
+            st.success(f"Pomyślnie dodano System {id_systemu} do listy!")
 
-    # Przyciski akcji na dole strony
-    st.write("### 3. Wygeneruj i pobierz raport")
-    
-    pdf_buffer = generate_pdf()
-    
-    st.download_button(
-        label="📥 Pobierz raport jako PDF ze zdjęciami",
-        data=pdf_buffer,
-        file_name=f"Raport_PPOZ_System_{system_id}.pdf",
-        mime="application/pdf"
-    )
-    st.success("Raport PDF został pomyślnie przygotowany! Kliknij przycisk powyżej, aby zapisać go na dysku.")
+    # Wyświetlanie aktualnego stanu listy
+    if st.session_state.lista_systemow:
+        st.write("---")
+        st.write(f"### 📋 Aktualna lista systemów w raporcie ({len(st.session_state.lista_systemow)})")
+        
+        # Pokazujemy uproszczoną tabelę, żeby użytkownik widział co już dodał
+        for idx, sys in enumerate(st.session_state.lista_systemow):
+            st.text(f"{idx+1}. System ID: {sys['id']} | Foto Przed: {sys['foto_przed_nazwa']} | Foto Po: {sys['foto_po_nazwa']}")
+            
+        # Generowanie raportu zbiorczego
+        st.write("---")
+        st.write("### 3. Wygeneruj końcowy plik PDF")
+        
+        def generate_final_pdf(systemy):
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+            story = []
+            
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=22, textColor=colors.HexColor('#2c3e50'), spaceAfter=15)
+            meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#34495e'), spaceAfter=5)
+            h2_style = ParagraphStyle('H2Style', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#2980b9'), spaceBefore=10, spaceAfter=10)
+            italic_style = ParagraphStyle('ItalicStyle', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Oblique', textColor=colors.HexColor('#2c3e50'))
+            
+            # Strona tytułowa / Nagłówek główny
+            story.append(Paragraph("ZBIORCZY RAPORT FOTODOKUMENTACJI PPOŻ", title_style))
+            story.append(Paragraph(f"<b>Projekt:</b> {project_name}", meta_style))
+            story.append(Paragraph(f"<b>Oznaczenie Ogólne:</b> {system_label}", meta_style))
+            story.append(Paragraph(f"<b>Wykonawca:</b> {author}", meta_style))
+            story.append(Spacer(1, 20))
+            
+            for idx, sys in enumerate(systemy):
+                if idx > 0:
+                    story.append(PageBreak()) # Każdy system zaczyna się od nowej strony
+                    
+                story.append(Paragraph(f"System ID: {sys['id']}", h2_style))
+                story.append(Spacer(1, 10))
+                
+                # Przygotowanie zdjęć do tabeli w PDF
+                try:
+                    img_przed = Image(BytesIO(sys['foto_przed_bytes']), width=240, height=180)
+                except:
+                    img_przed = Paragraph("[Błąd zdjęcia Przed]", italic_style)
+                    
+                try:
+                    img_po = Image(BytesIO(sys['foto_po_bytes']), width=240, height=180)
+                except:
+                    img_po = Paragraph("[Błąd zdjęcia Po]", italic_style)
+                    
+                table_data = [
+                    [Paragraph("<b>STAN PRZED (Vor Zustand)</b>", meta_style), Paragraph("<b>STAN PO (Nach Zustand)</b>", meta_style)],
+                    [img_przed, img_po],
+                    [Paragraph(f"<b>Plik:</b> {sys['foto_przed_nazwa']}", italic_style), Paragraph(f"<b>Plik:</b> {sys['foto_po_nazwa']}", italic_style)],
+                    [Paragraph("<b>PL:</b> Otwarty otwór instalacyjny przed uszczelnieniem.", italic_style), 
+                     Paragraph("<b>PL:</b> Gotowe zabezpieczenie ppoż. Szczelina wypełniona materiałem ogniochronnym.", italic_style)],
+                    [Paragraph("<b>DE:</b> Offene Installationsöffnung vor der Abschottung.", italic_style), 
+                     Paragraph("<b>DE:</b> Fertige Brandschutzabdichtung. Der Spalt ist ordnungsgemäß versiegelt.", italic_style)]
+                ]
+                
+                t = Table(table_data, colWidths=[260, 260])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (1,0), colors.HexColor('#f8f9fa')),
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                    ('TOPPADDING', (0,0), (-1,-1), 8),
+                    ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+                    ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#cbd5e1')),
+                ]))
+                story.append(t)
+                
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+
+        if st.button("🚀 Utwórz zbiorczy plik PDF ze wszystkimi pozycjami"):
+            with st.spinner("Generowanie raportu wielostronicowego..."):
+                final_pdf = generate_final_pdf(st.session_state.lista_systemow)
+                st.download_button(
+                    label="📥 POBIERZ GOTOWY ZBIORCZY PDF",
+                    data=final_pdf,
+                    file_name=f"Raport_Zbiorczy_PPOZ_{project_name}.pdf",
+                    mime="application/pdf"
+                )
+                st.success("Raport gotowy! Kliknij przycisk powyżej, aby zapisać plik.")
 else:
-    st.info("Proszę wgrać zdjęcia, aby odblokować opcje tworzenia raportu.")
+    st.info("Wgraj zdjęcia, aby rozpocząć konfigurację raportu.")
+
 
