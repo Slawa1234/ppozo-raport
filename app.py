@@ -4,15 +4,12 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.pdfmetrics import registerFont
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
 
 st.set_page_config(page_title="Generator Raportu PPOŻ", layout="wide")
 
 st.title("📸 Generator Zbiorczego Raportu PPOŻ")
 
-# Inicjalizacja listy
 if 'lista_systemow' not in st.session_state:
     st.session_state.lista_systemow = []
 
@@ -25,7 +22,6 @@ author = st.sidebar.text_input("Wykonawca (Visum)", "RH")
 if st.sidebar.button("🗑️ Wyczyść listę"):
     st.session_state.lista_systemow = []
 
-# Upload
 uploaded_files = st.file_uploader("Wgraj zdjęcia", type=["jpg", "png"], accept_multiple_files=True)
 
 if uploaded_files:
@@ -37,9 +33,15 @@ if uploaded_files:
     rozmiar = col2.text_input("Rozmiar")
     materialy = col3.text_input("Materiały")
     
+    # Przywrócony podgląd zdjęć
     c_przed, c_po = st.columns(2)
     s_przed = c_przed.selectbox("Stan Przed", opcje)
+    if s_przed != "-- Wybierz --":
+        c_przed.image(mapa_plikow[s_przed], width=200)
+        
     s_po = c_po.selectbox("Stan Po", opcje)
+    if s_po != "-- Wybierz --":
+        c_po.image(mapa_plikow[s_po], width=200)
     
     if st.button("➕ Dodaj do listy"):
         if id_sys and s_przed != "-- Wybierz --" and s_po != "-- Wybierz --":
@@ -50,31 +52,37 @@ if uploaded_files:
             st.success("Dodano!")
 
     if st.session_state.lista_systemow:
-        if st.button("🚀 Generuj PDF (z obsługą polskich znaków)"):
+        if st.button("🚀 Generuj PDF (z podglądem i polskimi znakami)"):
             buffer = BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
             story = []
             
-            # Używamy standardowego kodowania, które wspiera polskie znaki w Helvetica
+            # Konfiguracja stylu z kodowaniem WinAnsiEncoding dla polskich znaków
             styles = getSampleStyleSheet()
             style_norm = styles['Normal']
             style_norm.fontName = 'Helvetica'
-            style_norm.encoding = 'WinAnsiEncoding'
             
             for sys in st.session_state.lista_systemow:
                 story.append(Paragraph(f"System ID: {sys['id']}", styles['Heading2']))
+                
+                # Używamy BytesIO bezpośrednio w klasie Image
+                img1 = Image(BytesIO(sys['f_przed']), width=200, height=150)
+                img2 = Image(BytesIO(sys['f_po']), width=200, height=150)
+                
                 data = [
                     ["STAN PRZED", "STAN PO"],
-                    [Image(BytesIO(sys['f_przed']), 200, 150), Image(BytesIO(sys['f_po']), 200, 150)],
+                    [img1, img2],
                     [f"Rozmiar: {sys['rozmiar']}", f"Materiały: {sys['mat']}"],
                     ["PL: Otwarty otwór instalacyjny.", "PL: Gotowe zabezpieczenie ppoż."]
                 ]
                 t = Table(data, colWidths=[250, 250])
-                t.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black)]))
+                t.setStyle(TableStyle([('BOX', (0,0), (-1,-1), 1, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
                 story.append(t)
                 story.append(PageBreak())
             
             doc.build(story)
             buffer.seek(0)
             st.download_button("📥 POBIERZ PDF", buffer, "Raport.pdf", "application/pdf")
+
+
 
